@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { supabase } from "@/lib/supabase";
-
+import Footer from "@/components/footer";
 import Link from "next/link";
 
 import { motion } from "framer-motion";
@@ -817,45 +817,7 @@ export default function HomePage() {
       {/* FOOTER */}
       {/* ===================================== */}
 
-      <footer className="border-t border-zinc-900 bg-black py-14">
-
-        <div className="mx-auto flex max-w-7xl flex-col gap-8 px-6 md:flex-row md:items-center md:justify-between">
-
-          <div>
-
-            <h3 className="text-3xl font-black text-orange-500">
-              Subastas Motos 🏍️
-            </h3>
-
-            <p className="mt-3 max-w-md text-zinc-500">
-              Plataforma moderna de subastas de motos en tiempo real.
-            </p>
-
-          </div>
-
-          <div className="flex flex-wrap gap-6 text-sm text-zinc-500">
-
-            <Link href="/" className="transition hover:text-orange-500">
-              Inicio
-            </Link>
-
-            <Link href="/publicar" className="transition hover:text-orange-500">
-              Publicar
-            </Link>
-
-            <Link href="/login" className="transition hover:text-orange-500">
-              Login
-            </Link>
-
-            <Link href="/dashboard" className="transition hover:text-orange-500">
-              Dashboard
-            </Link>
-
-          </div>
-
-        </div>
-
-      </footer>
+      <Footer />
 
     </main>
   );

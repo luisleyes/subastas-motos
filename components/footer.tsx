@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export default function Footer() {
   return (
     <footer className="bg-black text-white border-t border-white/10 mt-20">
@@ -12,6 +14,12 @@ export default function Footer() {
           <p className="text-white/70 text-sm leading-relaxed">
             Plataforma especializada en subastas y publicación de motos en Colombia.
           </p>
+
+          <div className="mt-6 space-y-2 text-sm text-white/60">
+            <p>🔒 Pagos protegidos</p>
+            <p>✔ Usuarios verificados</p>
+            <p>🔥 Subastas en tiempo real</p>
+          </div>
         </div>
 
         {/* Empresa */}
@@ -21,23 +29,34 @@ export default function Footer() {
           </h3>
 
           <ul className="space-y-3 text-sm text-white/70">
+
             <li>
-              <a href="/quienes-somos" className="hover:text-white transition">
+              <Link
+                href="/quienes-somos"
+                className="hover:text-white transition"
+              >
                 Quiénes somos
-              </a>
+              </Link>
             </li>
 
             <li>
-              <a href="/contacto" className="hover:text-white transition">
+              <Link
+                href="/contacto"
+                className="hover:text-white transition"
+              >
                 Contacto
-              </a>
+              </Link>
             </li>
 
             <li>
-              <a href="/blog" className="hover:text-white transition">
+              <Link
+                href="/blog"
+                className="hover:text-white transition"
+              >
                 Blog
-              </a>
+              </Link>
             </li>
+
           </ul>
         </div>
 
@@ -48,23 +67,34 @@ export default function Footer() {
           </h3>
 
           <ul className="space-y-3 text-sm text-white/70">
+
             <li>
-              <a href="/terminos" className="hover:text-white transition">
+              <Link
+                href="/terminos"
+                className="hover:text-white transition"
+              >
                 Términos y condiciones
-              </a>
+              </Link>
             </li>
 
             <li>
-              <a href="/privacidad" className="hover:text-white transition">
+              <Link
+                href="/privacidad"
+                className="hover:text-white transition"
+              >
                 Política de privacidad
-              </a>
+              </Link>
             </li>
 
             <li>
-              <a href="/cookies" className="hover:text-white transition">
+              <Link
+                href="/cookies"
+                className="hover:text-white transition"
+              >
                 Política de cookies
-              </a>
+              </Link>
             </li>
+
           </ul>
         </div>
 
@@ -75,10 +105,12 @@ export default function Footer() {
           </h3>
 
           <ul className="space-y-3 text-sm text-white/70">
+
             <li>
               <a
                 href="https://wa.me/573017170878"
                 target="_blank"
+                rel="noopener noreferrer"
                 className="hover:text-white transition"
               >
                 WhatsApp
@@ -93,14 +125,47 @@ export default function Footer() {
                 contacto@subastasmotos.com
               </a>
             </li>
+
+            <li className="pt-2 text-white/50">
+              Atención en Colombia
+            </li>
+
           </ul>
         </div>
       </div>
 
       {/* Bottom */}
       <div className="border-t border-white/10">
-        <div className="max-w-7xl mx-auto px-6 py-6 text-center text-sm text-white/50">
-          © 2026 Subastas Motos. Todos los derechos reservados.
+        <div className="max-w-7xl mx-auto px-6 py-6 flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-white/50">
+
+          <p>
+            © 2026 Subastas Motos. Todos los derechos reservados.
+          </p>
+
+          <div className="flex items-center gap-4">
+
+            <Link
+              href="/terminos"
+              className="hover:text-white transition"
+            >
+              Términos
+            </Link>
+
+            <Link
+              href="/privacidad"
+              className="hover:text-white transition"
+            >
+              Privacidad
+            </Link>
+
+            <Link
+              href="/cookies"
+              className="hover:text-white transition"
+            >
+              Cookies
+            </Link>
+
+          </div>
         </div>
       </div>
     </footer>

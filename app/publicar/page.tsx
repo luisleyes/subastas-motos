@@ -16,6 +16,9 @@ import {
   Hash,
   FileText,
   Building2,
+  User,
+  Phone,
+  MessageCircle,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -34,6 +37,9 @@ export default function PublicarPage() {
     basePrice: "",
     plate: "",
     description: "",
+    sellerName: "",
+    sellerPhone: "",
+    sellerWhatsapp: "",
   });
 
   const [image, setImage] = useState<File | null>(null);
@@ -116,6 +122,9 @@ export default function PublicarPage() {
     if (!formData.basePrice) newErrors.basePrice = "El precio base es obligatorio";
     if (!formData.plate) newErrors.plate = "La placa es obligatoria";
     if (!formData.description) newErrors.description = "La descripción es obligatoria";
+    if (!formData.sellerName) newErrors.sellerName = "El nombre del vendedor es obligatorio";
+    if (!formData.sellerPhone) newErrors.sellerPhone = "El teléfono es obligatorio";
+    if (!formData.sellerWhatsapp) newErrors.sellerWhatsapp = "El WhatsApp es obligatorio";
     if (!image) newErrors.image = "Debes subir una imagen de la moto";
 
     setErrors(newErrors);
@@ -156,7 +165,7 @@ export default function PublicarPage() {
 
       const imageUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/motos/${fileName}`;
 
-      // Guardar en base de datos
+      // Guardar en base de datos con los nuevos campos
       const { error: insertError } = await supabase.from("motorcycles").insert([
         {
           brand: formData.brand,
@@ -173,6 +182,10 @@ export default function PublicarPage() {
           auction_end: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
           user_email: session.user.email,
           user_id: session.user.id,
+          // Nuevos campos de contacto
+          seller_name: formData.sellerName,
+          seller_phone: formData.sellerPhone,
+          seller_whatsapp: formData.sellerWhatsapp,
         },
       ]);
 
@@ -222,132 +235,190 @@ export default function PublicarPage() {
           </h1>
           <p className="mt-4 max-w-2xl text-lg text-zinc-400">
             Completa toda la información para generar confianza y atraer más pujas.
+            Tus datos de contacto permanecerán privados hasta que un comprador desbloquee el acceso.
           </p>
         </motion.div>
 
         {/* FORM */}
         <div className="grid gap-6">
-          <div className="grid gap-6 md:grid-cols-2">
-            {/* Marca */}
-            <div className="relative">
-              <Building2 className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-500" />
-              <input
-                name="brand"
-                value={formData.brand}
-                onChange={handleChange}
-                placeholder="Marca *"
-                className={`w-full rounded-2xl border ${errors.brand ? 'border-red-500' : 'border-zinc-800'} bg-zinc-950 pl-12 pr-4 py-4 focus:border-orange-500 focus:outline-none transition`}
-              />
-              {errors.brand && <p className="mt-1 text-xs text-red-400">{errors.brand}</p>}
-            </div>
+          {/* INFORMACIÓN DE LA MOTO */}
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-950/50 p-6">
+            <h2 className="mb-6 text-2xl font-black text-orange-500">Información de la moto</h2>
+            <div className="grid gap-6 md:grid-cols-2">
+              {/* Marca */}
+              <div className="relative">
+                <Building2 className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-500" />
+                <input
+                  name="brand"
+                  value={formData.brand}
+                  onChange={handleChange}
+                  placeholder="Marca *"
+                  className={`w-full rounded-2xl border ${errors.brand ? 'border-red-500' : 'border-zinc-800'} bg-black pl-12 pr-4 py-4 focus:border-orange-500 focus:outline-none transition`}
+                />
+                {errors.brand && <p className="mt-1 text-xs text-red-400">{errors.brand}</p>}
+              </div>
 
-            {/* Modelo */}
-            <div className="relative">
-              <Hash className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-500" />
-              <input
-                name="model"
-                value={formData.model}
-                onChange={handleChange}
-                placeholder="Modelo *"
-                className={`w-full rounded-2xl border ${errors.model ? 'border-red-500' : 'border-zinc-800'} bg-zinc-950 pl-12 pr-4 py-4 focus:border-orange-500 focus:outline-none transition`}
-              />
-              {errors.model && <p className="mt-1 text-xs text-red-400">{errors.model}</p>}
-            </div>
+              {/* Modelo */}
+              <div className="relative">
+                <Hash className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-500" />
+                <input
+                  name="model"
+                  value={formData.model}
+                  onChange={handleChange}
+                  placeholder="Modelo *"
+                  className={`w-full rounded-2xl border ${errors.model ? 'border-red-500' : 'border-zinc-800'} bg-black pl-12 pr-4 py-4 focus:border-orange-500 focus:outline-none transition`}
+                />
+                {errors.model && <p className="mt-1 text-xs text-red-400">{errors.model}</p>}
+              </div>
 
-            {/* Año - Selector dinámico */}
-            <div className="relative">
-              <Calendar className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-500" />
-              <select
-                name="year"
-                value={formData.year}
-                onChange={handleChange}
-                className={`w-full rounded-2xl border ${errors.year ? 'border-red-500' : 'border-zinc-800'} bg-zinc-950 pl-12 pr-4 py-4 focus:border-orange-500 focus:outline-none appearance-none cursor-pointer`}
-              >
-                <option value="">Año *</option>
-                {years.map((year) => (
-                  <option key={year} value={year}>{year}</option>
-                ))}
-              </select>
-              {errors.year && <p className="mt-1 text-xs text-red-400">{errors.year}</p>}
-            </div>
+              {/* Año */}
+              <div className="relative">
+                <Calendar className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-500" />
+                <select
+                  name="year"
+                  value={formData.year}
+                  onChange={handleChange}
+                  className={`w-full rounded-2xl border ${errors.year ? 'border-red-500' : 'border-zinc-800'} bg-black pl-12 pr-4 py-4 focus:border-orange-500 focus:outline-none appearance-none cursor-pointer`}
+                >
+                  <option value="">Año *</option>
+                  {years.map((year) => (
+                    <option key={year} value={year}>{year}</option>
+                  ))}
+                </select>
+                {errors.year && <p className="mt-1 text-xs text-red-400">{errors.year}</p>}
+              </div>
 
-            {/* Kilometraje */}
-            <div className="relative">
-              <Gauge className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-500" />
-              <input
-                name="mileage"
-                value={formData.mileage}
-                onChange={handleChange}
-                placeholder="Kilometraje *"
-                type="number"
-                className={`w-full rounded-2xl border ${errors.mileage ? 'border-red-500' : 'border-zinc-800'} bg-zinc-950 pl-12 pr-4 py-4 focus:border-orange-500 focus:outline-none transition`}
-              />
-              {errors.mileage && <p className="mt-1 text-xs text-red-400">{errors.mileage}</p>}
-            </div>
+              {/* Kilometraje */}
+              <div className="relative">
+                <Gauge className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-500" />
+                <input
+                  name="mileage"
+                  value={formData.mileage}
+                  onChange={handleChange}
+                  placeholder="Kilometraje *"
+                  type="number"
+                  className={`w-full rounded-2xl border ${errors.mileage ? 'border-red-500' : 'border-zinc-800'} bg-black pl-12 pr-4 py-4 focus:border-orange-500 focus:outline-none transition`}
+                />
+                {errors.mileage && <p className="mt-1 text-xs text-red-400">{errors.mileage}</p>}
+              </div>
 
-            {/* Ciudad - Selector */}
-            <div className="relative">
-              <MapPin className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-500" />
-              <select
-                name="city"
-                value={formData.city}
-                onChange={handleChange}
-                className={`w-full rounded-2xl border ${errors.city ? 'border-red-500' : 'border-zinc-800'} bg-zinc-950 pl-12 pr-4 py-4 focus:border-orange-500 focus:outline-none appearance-none cursor-pointer`}
-              >
-                <option value="">Ciudad *</option>
-                {colombianCities.map((city) => (
-                  <option key={city} value={city}>{city}</option>
-                ))}
-              </select>
-              {errors.city && <p className="mt-1 text-xs text-red-400">{errors.city}</p>}
-            </div>
+              {/* Ciudad */}
+              <div className="relative">
+                <MapPin className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-500" />
+                <select
+                  name="city"
+                  value={formData.city}
+                  onChange={handleChange}
+                  className={`w-full rounded-2xl border ${errors.city ? 'border-red-500' : 'border-zinc-800'} bg-black pl-12 pr-4 py-4 focus:border-orange-500 focus:outline-none appearance-none cursor-pointer`}
+                >
+                  <option value="">Ciudad *</option>
+                  {colombianCities.map((city) => (
+                    <option key={city} value={city}>{city}</option>
+                  ))}
+                </select>
+                {errors.city && <p className="mt-1 text-xs text-red-400">{errors.city}</p>}
+              </div>
 
-            {/* Precio Base */}
-            <div className="relative">
-              <DollarSign className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-500" />
-              <input
-                name="basePrice"
-                value={formData.basePrice}
-                onChange={handleChange}
-                placeholder="Precio Base (COP) *"
-                type="number"
-                className={`w-full rounded-2xl border ${errors.basePrice ? 'border-red-500' : 'border-zinc-800'} bg-zinc-950 pl-12 pr-4 py-4 focus:border-orange-500 focus:outline-none transition`}
-              />
-              {previewPrice && (
-                <p className="mt-1 text-xs text-green-500">≈ ${previewPrice} COP</p>
-              )}
-              {errors.basePrice && <p className="mt-1 text-xs text-red-400">{errors.basePrice}</p>}
-            </div>
+              {/* Precio Base */}
+              <div className="relative">
+                <DollarSign className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-500" />
+                <input
+                  name="basePrice"
+                  value={formData.basePrice}
+                  onChange={handleChange}
+                  placeholder="Precio Base (COP) *"
+                  type="number"
+                  className={`w-full rounded-2xl border ${errors.basePrice ? 'border-red-500' : 'border-zinc-800'} bg-black pl-12 pr-4 py-4 focus:border-orange-500 focus:outline-none transition`}
+                />
+                {previewPrice && (
+                  <p className="mt-1 text-xs text-green-500">≈ ${previewPrice} COP</p>
+                )}
+                {errors.basePrice && <p className="mt-1 text-xs text-red-400">{errors.basePrice}</p>}
+              </div>
 
-            {/* Placa */}
-            <div className="relative md:col-span-2">
-              <FileText className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-500" />
-              <input
-                name="plate"
-                value={formData.plate}
-                onChange={handleChange}
-                placeholder="Placa * (Ej: ABC123)"
-                className={`w-full rounded-2xl border ${errors.plate ? 'border-red-500' : 'border-zinc-800'} bg-zinc-950 pl-12 pr-4 py-4 focus:border-orange-500 focus:outline-none transition uppercase`}
-              />
-              {errors.plate && <p className="mt-1 text-xs text-red-400">{errors.plate}</p>}
+              {/* Placa */}
+              <div className="relative md:col-span-2">
+                <FileText className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-500" />
+                <input
+                  name="plate"
+                  value={formData.plate}
+                  onChange={handleChange}
+                  placeholder="Placa * (Ej: ABC123)"
+                  className={`w-full rounded-2xl border ${errors.plate ? 'border-red-500' : 'border-zinc-800'} bg-black pl-12 pr-4 py-4 focus:border-orange-500 focus:outline-none transition uppercase`}
+                />
+                {errors.plate && <p className="mt-1 text-xs text-red-400">{errors.plate}</p>}
+              </div>
             </div>
           </div>
 
-          {/* Descripción */}
-          <div className="relative">
-            <FileText className="absolute left-4 top-5 h-5 w-5 text-zinc-500" />
-            <textarea
-              name="description"
-              value={formData.description}
-              onChange={handleChange}
-              placeholder="Detalles mecánicos, peritaje, observaciones, estado general... *"
-              rows={6}
-              className={`w-full rounded-2xl border ${errors.description ? 'border-red-500' : 'border-zinc-800'} bg-zinc-950 pl-12 pr-4 py-4 resize-none focus:border-orange-500 focus:outline-none transition`}
-            />
-            {errors.description && <p className="mt-1 text-xs text-red-400">{errors.description}</p>}
+          {/* INFORMACIÓN DE CONTACTO DEL VENDEDOR (PRIVADA) */}
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-950/50 p-6">
+            <h2 className="mb-6 text-2xl font-black text-orange-500">Información de contacto</h2>
+            <p className="mb-4 text-sm text-zinc-400">
+              Esta información NO será visible públicamente. Solo se mostrará a compradores que paguen por desbloquear el contacto.
+            </p>
+            <div className="grid gap-6 md:grid-cols-2">
+              {/* Nombre del vendedor */}
+              <div className="relative md:col-span-2">
+                <User className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-500" />
+                <input
+                  name="sellerName"
+                  value={formData.sellerName}
+                  onChange={handleChange}
+                  placeholder="Nombre del vendedor *"
+                  className={`w-full rounded-2xl border ${errors.sellerName ? 'border-red-500' : 'border-zinc-800'} bg-black pl-12 pr-4 py-4 focus:border-orange-500 focus:outline-none transition`}
+                />
+                {errors.sellerName && <p className="mt-1 text-xs text-red-400">{errors.sellerName}</p>}
+              </div>
+
+              {/* Teléfono */}
+              <div className="relative">
+                <Phone className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-500" />
+                <input
+                  name="sellerPhone"
+                  value={formData.sellerPhone}
+                  onChange={handleChange}
+                  placeholder="Teléfono de contacto * (Ej: 3001234567)"
+                  type="tel"
+                  className={`w-full rounded-2xl border ${errors.sellerPhone ? 'border-red-500' : 'border-zinc-800'} bg-black pl-12 pr-4 py-4 focus:border-orange-500 focus:outline-none transition`}
+                />
+                {errors.sellerPhone && <p className="mt-1 text-xs text-red-400">{errors.sellerPhone}</p>}
+              </div>
+
+              {/* WhatsApp */}
+              <div className="relative">
+                <MessageCircle className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-500" />
+                <input
+                  name="sellerWhatsapp"
+                  value={formData.sellerWhatsapp}
+                  onChange={handleChange}
+                  placeholder="WhatsApp * (Ej: 573001234567)"
+                  type="tel"
+                  className={`w-full rounded-2xl border ${errors.sellerWhatsapp ? 'border-red-500' : 'border-zinc-800'} bg-black pl-12 pr-4 py-4 focus:border-orange-500 focus:outline-none transition`}
+                />
+                {errors.sellerWhatsapp && <p className="mt-1 text-xs text-red-400">{errors.sellerWhatsapp}</p>}
+              </div>
+            </div>
           </div>
 
-          {/* UPLOAD */}
+          {/* DESCRIPCIÓN */}
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-950/50 p-6">
+            <h2 className="mb-6 text-2xl font-black text-orange-500">Descripción de la moto</h2>
+            <div className="relative">
+              <FileText className="absolute left-4 top-5 h-5 w-5 text-zinc-500" />
+              <textarea
+                name="description"
+                value={formData.description}
+                onChange={handleChange}
+                placeholder="Detalles mecánicos, peritaje, observaciones, estado general... *"
+                rows={6}
+                className={`w-full rounded-2xl border ${errors.description ? 'border-red-500' : 'border-zinc-800'} bg-black pl-12 pr-4 py-4 resize-none focus:border-orange-500 focus:outline-none transition`}
+              />
+              {errors.description && <p className="mt-1 text-xs text-red-400">{errors.description}</p>}
+            </div>
+          </div>
+
+          {/* SUBIR IMAGEN */}
           <div className={`rounded-3xl border-2 border-dashed p-10 text-center transition-all ${imagePreview ? "border-orange-500" : "border-zinc-800"} ${errors.image ? 'border-red-500' : ''} bg-zinc-950/50`}>
             {imagePreview ? (
               <div className="relative">
@@ -380,7 +451,7 @@ export default function PublicarPage() {
             {errors.image && <p className="mt-2 text-sm text-red-400">{errors.image}</p>}
           </div>
 
-          {/* BUTTON */}
+          {/* BOTÓN PUBLICAR */}
           <motion.button
             whileHover={{ scale: 1.01 }}
             whileTap={{ scale: 0.98 }}

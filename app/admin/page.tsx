@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
-import { Loader2, CheckCircle, XCircle, Star, Trash2, Eye, Users, Bike, Ban, AlertCircle } from "lucide-react";
+import { Loader2, CheckCircle, XCircle, Star, Trash2, Eye, Users, Bike, Ban, AlertCircle, ShoppingBag, Clock, RotateCcw } from "lucide-react";
 import { motion } from "framer-motion";
 
 // ======================
@@ -42,28 +42,23 @@ function UsersManagement() {
     setLoading(true);
     
     try {
-      // 🔴 CAMBIADO: Usar API route en lugar de supabase.auth.admin.listUsers()
       const response = await fetch("/api/admin/users");
       const authUsers = await response.json();
       
-      // Obtener estado de usuarios
       const { data: statuses } = await supabase
         .from("user_status")
         .select("*");
       
-      // Obtener conteo de motos por usuario
       const { data: motos } = await supabase
         .from("motorcycles")
         .select("user_email");
       
-      // Obtener conteo de pujas por usuario
       const { data: bids } = await supabase
         .from("bids")
         .select("bidder_email");
       
       const userMap = new Map();
       
-      // 🔴 CAMBIADO: Eliminado el ? porque authUsers siempre existe
       authUsers.forEach((authUser: any) => {
         const status = statuses?.find((s: any) => s.user_id === authUser.id);
         userMap.set(authUser.id, {
@@ -121,7 +116,6 @@ function UsersManagement() {
     }
   };
 
-  // Filtrar usuarios
   const filteredUsers = users.filter(user => {
     const matchesSearch = user.email.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === "todos" || user.status === statusFilter;
@@ -138,7 +132,6 @@ function UsersManagement() {
 
   return (
     <div className="space-y-6">
-      {/* Stats de usuarios */}
       <div className="grid gap-4 md:grid-cols-4">
         <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-6 text-center">
           <p className="text-sm text-zinc-500">Total usuarios</p>
@@ -164,7 +157,6 @@ function UsersManagement() {
         </div>
       </div>
 
-      {/* Filtros */}
       <div className="flex flex-wrap gap-4">
         <input
           type="text"
@@ -183,15 +175,11 @@ function UsersManagement() {
           <option value="suspended">Suspendidos</option>
           <option value="banned">Baneados</option>
         </select>
-        <button
-          onClick={fetchUsers}
-          className="rounded-2xl border border-zinc-700 px-5 py-3 text-white transition hover:bg-zinc-800"
-        >
+        <button onClick={fetchUsers} className="rounded-2xl border border-zinc-700 px-5 py-3 text-white transition hover:bg-zinc-800">
           🔄 Actualizar
         </button>
       </div>
 
-      {/* Tabla de usuarios */}
       <div className="overflow-x-auto rounded-3xl border border-zinc-800 bg-zinc-950">
         <table className="w-full">
           <thead className="border-b border-zinc-800 bg-zinc-900">
@@ -221,16 +209,10 @@ function UsersManagement() {
                     </div>
                   </td>
                   <td className="px-6 py-4">{getStatusBadge(user.status)}</td>
+                  <td className="px-6 py-4"><span className="text-white">{user.motos_count}</span></td>
+                  <td className="px-6 py-4"><span className="text-white">{user.bids_count}</span></td>
                   <td className="px-6 py-4">
-                    <span className="text-white">{user.motos_count}</span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="text-white">{user.bids_count}</span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="text-sm text-zinc-400">
-                      {new Date(user.created_at).toLocaleDateString()}
-                    </span>
+                    <span className="text-sm text-zinc-400">{new Date(user.created_at).toLocaleDateString()}</span>
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex gap-2">
@@ -261,7 +243,6 @@ function UsersManagement() {
         </table>
       </div>
 
-      {/* Modal de suspensión */}
       {showSuspendModal && selectedUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
           <motion.div
@@ -311,24 +292,20 @@ export default function AdminPage() {
   const [motorcycles, setMotorcycles] = useState<any[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [activeTab, setActiveTab] = useState<"motos" | "usuarios">("motos");
+  const [statusFilter, setStatusFilter] = useState("todas");
 
-  // Verificar admin
   useEffect(() => {
     checkAdmin();
   }, []);
 
   const checkAdmin = async () => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
+    const { data: { session } } = await supabase.auth.getSession();
 
-    // NO LOGIN
     if (!session) {
       router.push("/login");
       return;
     }
 
-    // NO ES ADMIN (compara con variable de entorno)
     const adminEmail = process.env.NEXT_PUBLIC_ADMIN_EMAIL;
     
     if (session.user.email !== adminEmail) {
@@ -345,9 +322,7 @@ export default function AdminPage() {
     const { data } = await supabase
       .from("motorcycles")
       .select("*")
-      .order("created_at", {
-        ascending: false,
-      });
+      .order("created_at", { ascending: false });
 
     setMotorcycles(data || []);
   };
@@ -356,10 +331,7 @@ export default function AdminPage() {
     const confirmDelete = confirm("¿Eliminar publicación permanentemente?");
     if (!confirmDelete) return;
 
-    const { error } = await supabase
-      .from("motorcycles")
-      .delete()
-      .eq("id", id);
+    const { error } = await supabase.from("motorcycles").delete().eq("id", id);
 
     if (error) {
       alert("Error al eliminar");
@@ -373,10 +345,7 @@ export default function AdminPage() {
   const approveMoto = async (id: string) => {
     const { error } = await supabase
       .from("motorcycles")
-      .update({
-        approved: true,
-        rejected: false,
-      })
+      .update({ approved: true, rejected: false })
       .eq("id", id);
 
     if (error) {
@@ -391,10 +360,7 @@ export default function AdminPage() {
   const rejectMoto = async (id: string) => {
     const { error } = await supabase
       .from("motorcycles")
-      .update({
-        rejected: true,
-        approved: false,
-      })
+      .update({ rejected: true, approved: false })
       .eq("id", id);
 
     if (error) {
@@ -409,9 +375,7 @@ export default function AdminPage() {
   const featureMoto = async (id: string, current: boolean) => {
     const { error } = await supabase
       .from("motorcycles")
-      .update({
-        featured: !current,
-      })
+      .update({ featured: !current })
       .eq("id", id);
 
     if (error) {
@@ -422,6 +386,65 @@ export default function AdminPage() {
     fetchMotorcycles();
     alert(!current ? "⭐ Moto destacada" : "⭐ Moto ya no está destacada");
   };
+
+  // 🆕 REACTIVAR SUBASTA
+  const reactivateMoto = async (id: string) => {
+    const newEndDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const { error } = await supabase
+      .from("motorcycles")
+      .update({ 
+        status: "active", 
+        auction_end: newEndDate.toISOString(),
+        winner_id: null,
+        sold_at: null,
+        sold_price: null
+      })
+      .eq("id", id);
+
+    if (error) {
+      alert("Error al reactivar la subasta");
+      return;
+    }
+
+    fetchMotorcycles();
+    alert("✅ Subasta reactivada por 7 días");
+  };
+
+  // 🆕 OBTENER BADGE DE ESTADO
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "active":
+        return (
+          <span className="flex items-center gap-1 rounded-full bg-green-500/20 px-3 py-1 text-xs font-bold text-green-400">
+            <Clock className="h-3 w-3" /> Activa
+          </span>
+        );
+      case "sold":
+        return (
+          <span className="flex items-center gap-1 rounded-full bg-blue-500/20 px-3 py-1 text-xs font-bold text-blue-400">
+            <ShoppingBag className="h-3 w-3" /> Vendida
+          </span>
+        );
+      case "ended":
+        return (
+          <span className="flex items-center gap-1 rounded-full bg-red-500/20 px-3 py-1 text-xs font-bold text-red-400">
+            <Ban className="h-3 w-3" /> Finalizada
+          </span>
+        );
+      default:
+        return (
+          <span className="flex items-center gap-1 rounded-full bg-zinc-500/20 px-3 py-1 text-xs font-bold text-zinc-400">
+            <AlertCircle className="h-3 w-3" /> Desconocido
+          </span>
+        );
+    }
+  };
+
+  // Filtrar motos por estado
+  const filteredMotos = motorcycles.filter(moto => {
+    if (statusFilter === "todas") return true;
+    return moto.status === statusFilter;
+  });
 
   if (loading) {
     return (
@@ -440,6 +463,9 @@ export default function AdminPage() {
   const approvedMotos = motorcycles.filter((m) => m.approved).length;
   const pendingMotos = motorcycles.filter((m) => !m.approved && !m.rejected).length;
   const featuredMotos = motorcycles.filter((m) => m.featured).length;
+  const activeMotos = motorcycles.filter((m) => m.status === "active").length;
+  const soldMotos = motorcycles.filter((m) => m.status === "sold").length;
+  const endedMotos = motorcycles.filter((m) => m.status === "ended").length;
 
   return (
     <main className="min-h-screen bg-black px-6 py-12 text-white">
@@ -483,8 +509,8 @@ export default function AdminPage() {
         {/* CONTENIDO - MOTOS */}
         {activeTab === "motos" ? (
           <>
-            {/* STATS */}
-            <div className="mb-10 grid gap-6 md:grid-cols-4">
+            {/* STATS MEJORADOS */}
+            <div className="mb-10 grid gap-6 md:grid-cols-6">
               <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-6">
                 <p className="text-sm text-zinc-500">Total motos</p>
                 <p className="text-3xl font-black text-orange-500">{totalMotos}</p>
@@ -501,16 +527,60 @@ export default function AdminPage() {
                 <p className="text-sm text-zinc-500">Destacadas</p>
                 <p className="text-3xl font-black text-orange-500">{featuredMotos}</p>
               </div>
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-6">
+                <p className="text-sm text-zinc-500">Activas</p>
+                <p className="text-3xl font-black text-green-500">{activeMotos}</p>
+              </div>
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-6">
+                <p className="text-sm text-zinc-500">Vendidas</p>
+                <p className="text-3xl font-black text-blue-500">{soldMotos}</p>
+              </div>
+            </div>
+
+            {/* FILTROS POR ESTADO */}
+            <div className="mb-6 flex flex-wrap gap-2">
+              <button
+                onClick={() => setStatusFilter("todas")}
+                className={`rounded-xl px-4 py-2 text-sm font-bold transition ${
+                  statusFilter === "todas" ? "bg-orange-500 text-black" : "bg-zinc-800 text-white hover:bg-zinc-700"
+                }`}
+              >
+                Todas
+              </button>
+              <button
+                onClick={() => setStatusFilter("active")}
+                className={`rounded-xl px-4 py-2 text-sm font-bold transition ${
+                  statusFilter === "active" ? "bg-green-500 text-black" : "bg-zinc-800 text-white hover:bg-zinc-700"
+                }`}
+              >
+                Activas
+              </button>
+              <button
+                onClick={() => setStatusFilter("sold")}
+                className={`rounded-xl px-4 py-2 text-sm font-bold transition ${
+                  statusFilter === "sold" ? "bg-blue-500 text-black" : "bg-zinc-800 text-white hover:bg-zinc-700"
+                }`}
+              >
+                Vendidas
+              </button>
+              <button
+                onClick={() => setStatusFilter("ended")}
+                className={`rounded-xl px-4 py-2 text-sm font-bold transition ${
+                  statusFilter === "ended" ? "bg-red-500 text-black" : "bg-zinc-800 text-white hover:bg-zinc-700"
+                }`}
+              >
+                Finalizadas
+              </button>
             </div>
 
             {/* LISTA DE MOTOS */}
-            {motorcycles.length === 0 ? (
+            {filteredMotos.length === 0 ? (
               <div className="rounded-3xl border border-dashed border-zinc-800 bg-zinc-950 p-16 text-center">
                 <p className="text-zinc-400">No hay motos publicadas aún</p>
               </div>
             ) : (
               <div className="grid gap-8 lg:grid-cols-2">
-                {motorcycles.map((moto, index) => (
+                {filteredMotos.map((moto, index) => (
                   <motion.div
                     key={moto.id}
                     initial={{ opacity: 0, y: 20 }}
@@ -530,23 +600,29 @@ export default function AdminPage() {
                           <h2 className="text-3xl font-black">
                             {moto.brand} <span className="text-orange-500">{moto.model}</span>
                           </h2>
-                          {moto.featured && (
-                            <span className="rounded-full bg-gradient-to-r from-orange-500 to-orange-600 px-3 py-1 text-xs font-black text-black">
-                              ⭐ DESTACADA
-                            </span>
-                          )}
-                          {moto.approved && (
-                            <span className="rounded-full bg-green-500 px-3 py-1 text-xs font-black text-black">
-                              ✅ Aprobada
-                            </span>
-                          )}
-                          {moto.rejected && (
-                            <span className="rounded-full bg-red-500 px-3 py-1 text-xs font-black text-white">
-                              ❌ Rechazada
-                            </span>
-                          )}
+                          {getStatusBadge(moto.status)}
                         </div>
                       </div>
+
+                      {/* Mostrar precio de venta si está vendida */}
+                      {moto.status === "sold" && moto.sold_price && (
+                        <div className="mt-2 rounded-lg bg-blue-500/10 p-2 text-center">
+                          <p className="text-xs text-blue-400">Vendida por</p>
+                          <p className="text-xl font-black text-blue-400">
+                            ${moto.sold_price.toLocaleString()}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Mostrar tiempo restante si está activa */}
+                      {moto.status === "active" && moto.auction_end && (
+                        <div className="mt-2 rounded-lg bg-green-500/10 p-2 text-center">
+                          <p className="text-xs text-green-400">Finaliza</p>
+                          <p className="text-sm font-bold text-green-400">
+                            {new Date(moto.auction_end).toLocaleString()}
+                          </p>
+                        </div>
+                      )}
 
                       <div className="mt-4 grid grid-cols-2 gap-3 border-t border-zinc-800 pt-4 text-sm text-zinc-400">
                         <p>📧 {moto.user_email || "No especificado"}</p>
@@ -555,6 +631,9 @@ export default function AdminPage() {
                         <p>📅 {moto.year}</p>
                         <p>🛣️ {moto.mileage.toLocaleString()} km</p>
                         <p>💰 ${moto.base_price.toLocaleString()}</p>
+                        {moto.buy_now_price && (
+                          <p className="col-span-2 text-green-500">⚡ Compra directa: ${moto.buy_now_price.toLocaleString()}</p>
+                        )}
                       </div>
 
                       <div className="mt-6 flex flex-wrap gap-3">
@@ -603,6 +682,17 @@ export default function AdminPage() {
                           <Trash2 className="h-4 w-4" />
                           Eliminar
                         </button>
+
+                        {/* Botón Reactivar (solo para subastas finalizadas o vendidas) */}
+                        {moto.status !== "active" && (
+                          <button
+                            onClick={() => reactivateMoto(moto.id)}
+                            className="flex items-center gap-2 rounded-xl bg-blue-500/20 px-5 py-3 font-bold text-blue-400 transition hover:bg-blue-500 hover:text-white"
+                          >
+                            <RotateCcw className="h-4 w-4" />
+                            Reactivar
+                          </button>
+                        )}
                       </div>
                     </div>
                   </motion.div>

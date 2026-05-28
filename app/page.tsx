@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { supabase } from "@/lib/supabase";
-import Footer from "@/components/footer";
+import Footer from "@/components/Footer";
 import Link from "next/link";
 
 import { motion } from "framer-motion";
@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 
 import { useRouter } from "next/navigation";
+import { formatPlate } from "@/lib/formatPlate";
 
 export default function HomePage() {
 
@@ -459,7 +460,7 @@ export default function HomePage() {
                         </p>
 
                         <p>
-                          🪪 {moto.plate}
+                          🪪 {formatPlate(moto.plate, false)}
                         </p>
 
                       </div>

@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { calculateBidIncrement } from "@/lib/bidIncrement";
+import { formatPrice } from "@/lib/formatPrice";
+import { extendAuctionIfNeeded } from "@/lib/antisniper";
 
 interface Bid {
   id: string;
@@ -14,45 +17,44 @@ interface Bid {
 export default function BidSection({
   motorcycleId,
   basePrice,
+  initialEndTime,
 }: {
   motorcycleId: string;
   basePrice: number;
+  initialEndTime?: string;
 }) {
-
   const [bids, setBids] = useState<Bid[]>([]);
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
   const [hasAccess, setHasAccess] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [participants, setParticipants] = useState(0);
+  const [highestBid, setHighestBid] = useState(basePrice);
+  const [endTime, setEndTime] = useState<Date | null>(
+    initialEndTime ? new Date(initialEndTime) : null
+  );
 
-  // Cargar bids iniciales y verificar acceso
+  // Calcular incremento mínimo dinámico
+  const minimumIncrement = calculateBidIncrement(participants);
+  const minimumAllowedBid = highestBid + minimumIncrement;
 
+  // Cargar bids iniciales
   useEffect(() => {
-
     fetchBids();
+    checkAccess();
 
-    // 🔐 VERIFICAR ACCESO A PUJAS
-    const checkAccess = async () => {
-
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) return;
-
+    // Obtener el tiempo de finalización actual
+    const fetchEndTime = async () => {
       const { data } = await supabase
-        .from("bid_access")
-        .select("*")
-        .eq("user_id", user.id)
-        .eq("active", true)
+        .from("motorcycles")
+        .select("auction_end")
+        .eq("id", motorcycleId)
         .single();
-
-      if (data) {
-        setHasAccess(true);
+      if (data?.auction_end) {
+        setEndTime(new Date(data.auction_end));
       }
     };
-
-    checkAccess();
+    fetchEndTime();
 
     const channel = supabase
       .channel("bids-realtime")
@@ -62,18 +64,14 @@ export default function BidSection({
           event: "INSERT",
           schema: "public",
           table: "bids",
+          filter: `motorcycle_id=eq.${motorcycleId}`,
         },
         (payload) => {
-
           const newBid = payload.new as Bid;
-
-          if (newBid.motorcycle_id === motorcycleId) {
-            setBids((prev) => [
-              newBid,
-              ...prev,
-            ]);
+          setBids((prev) => [newBid, ...prev]);
+          if (newBid.amount > highestBid) {
+            setHighestBid(newBid.amount);
           }
-
         }
       )
       .subscribe();
@@ -81,41 +79,88 @@ export default function BidSection({
     return () => {
       supabase.removeChannel(channel);
     };
-
   }, [motorcycleId]);
 
   async function fetchBids() {
-
     const { data } = await supabase
       .from("bids")
       .select("*")
       .eq("motorcycle_id", motorcycleId)
-      .order("amount", {
-        ascending: false,
-      });
+      .order("amount", { ascending: false });
 
     if (data) {
       setBids(data);
+      const uniqueParticipants = new Set(data.map(b => b.bidder_name)).size;
+      setParticipants(uniqueParticipants);
+      if (data.length > 0) {
+        setHighestBid(data[0].amount);
+      }
+    }
+  }
+
+  async function checkAccess() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data } = await supabase
+      .from("bid_access")
+      .select("*")
+      .eq("user_id", user.id)
+      .eq("active", true)
+      .single();
+
+    if (data) {
+      setHasAccess(true);
     }
   }
 
   async function placeBid() {
+    // 🔒 PASO 4: Verificar que la subasta está activa (vendida o finalizada)
+    const { data: motorcycle } = await supabase
+      .from("motorcycles")
+      .select("status")
+      .eq("id", motorcycleId)
+      .single();
 
-    // Validar nombre
+    if (motorcycle?.status !== "active") {
+      alert("⚠️ Esta subasta ya no está activa (vendida o finalizada)");
+      return;
+    }
+
     if (!name.trim()) {
       alert("Por favor ingresa tu nombre");
       return;
     }
 
-    const highestBid = bids[0]?.amount || basePrice;
     const bidAmount = Number(amount);
+    if (isNaN(bidAmount) || bidAmount <= 0) {
+      alert("Ingresa un monto válido");
+      return;
+    }
 
-    if (bidAmount <= highestBid) {
-      alert(`La puja debe ser mayor a $${highestBid.toLocaleString()}`);
+    if (bidAmount < minimumAllowedBid) {
+      alert(`⚠️ La puja mínima es ${formatPrice(minimumAllowedBid)}`);
       return;
     }
 
     setIsLoading(true);
+
+    // 🔥 ANTI-SNIPER: Verificar si necesitamos extender la subasta
+    let newEndTime = endTime;
+    if (endTime) {
+      const extendedEndTime = extendAuctionIfNeeded(endTime);
+      if (extendedEndTime.getTime() !== endTime.getTime()) {
+        newEndTime = extendedEndTime;
+        // Actualizar en la base de datos
+        await supabase
+          .from("motorcycles")
+          .update({ auction_end: extendedEndTime.toISOString() })
+          .eq("id", motorcycleId);
+        
+        setEndTime(extendedEndTime);
+        alert(`⏰ ¡Subasta extendida! Nueva fecha de cierre: ${extendedEndTime.toLocaleString()}`);
+      }
+    }
 
     const { error } = await supabase
       .from("bids")
@@ -130,20 +175,20 @@ export default function BidSection({
     if (error) {
       console.error("Error al pujar:", error);
       alert("❌ Error realizando puja");
-      setIsLoading(false);
-      return;
+    } else {
+      alert(`✅ Puja de ${formatPrice(bidAmount)} realizada con éxito!`);
+      setAmount("");
+      setHighestBid(bidAmount);
     }
 
-    setAmount("");
     setIsLoading(false);
-    alert(`✅ Puja de $${bidAmount.toLocaleString()} realizada con éxito!`);
   }
 
-  const currentPrice = bids[0]?.amount || basePrice;
+  const currentPrice = highestBid;
+  const timeLeftText = endTime ? formatTimeLeft(endTime) : "No definido";
 
   return (
     <div className="mt-10 rounded-3xl border border-zinc-800 bg-zinc-950 p-8">
-
       <h2 className="mb-6 text-3xl font-black text-white">
         Pujas en tiempo real
       </h2>
@@ -154,8 +199,38 @@ export default function BidSection({
           Puja actual
         </p>
         <h3 className="mt-2 text-5xl font-black text-orange-500">
-          ${currentPrice.toLocaleString()}
+          {formatPrice(currentPrice)}
         </h3>
+      </div>
+
+      {/* Tiempo restante */}
+      {endTime && (
+        <div className="mb-6 rounded-2xl border border-orange-500/20 bg-orange-500/5 p-4 text-center">
+          <p className="text-sm text-zinc-400">⏰ Tiempo restante</p>
+          <p className="text-2xl font-black text-orange-500">{timeLeftText}</p>
+          <p className="text-xs text-zinc-500 mt-1">
+            {endTime.getTime() - new Date().getTime() <= 2 * 60 * 1000 && endTime.getTime() - new Date().getTime() > 0 ? 
+              "⚠️ ¡Últimos minutos! Cualquier puja extiende la subasta" : ""}
+          </p>
+        </div>
+      )}
+
+      {/* Info de participantes e incremento */}
+      <div className="mb-6 rounded-2xl border border-orange-500/20 bg-orange-500/5 p-4">
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          <div>
+            <span className="text-zinc-400">Participantes activos:</span>
+            <span className="ml-2 font-bold text-white">{participants}</span>
+          </div>
+          <div>
+            <span className="text-zinc-400">Incremento mínimo:</span>
+            <span className="ml-2 font-bold text-green-400">{formatPrice(minimumIncrement)}</span>
+          </div>
+          <div className="col-span-2">
+            <span className="text-zinc-400">Puja mínima permitida:</span>
+            <span className="ml-2 font-bold text-orange-500">{formatPrice(minimumAllowedBid)}</span>
+          </div>
+        </div>
       </div>
 
       {/* Inputs */}
@@ -177,7 +252,7 @@ export default function BidSection({
         />
       </div>
 
-      {/* 🎯 BOTÓN CONDICIONAL */}
+      {/* Botón condicional */}
       {hasAccess ? (
         <button
           onClick={placeBid}
@@ -197,6 +272,7 @@ export default function BidSection({
 
       {/* Historial */}
       <div className="mt-10 space-y-4">
+        <h3 className="text-xl font-bold text-white">Historial de pujas</h3>
         {bids.length === 0 ? (
           <div className="rounded-2xl border border-zinc-800 bg-black p-8 text-center">
             <p className="text-zinc-500">Aún no hay pujas. ¡Sé el primero!</p>
@@ -214,14 +290,13 @@ export default function BidSection({
                 </p>
               </div>
               <p className="text-2xl font-black text-orange-500">
-                ${bid.amount.toLocaleString()}
+                {formatPrice(bid.amount)}
               </p>
             </div>
           ))
         )}
       </div>
 
-      {/* Mensaje informativo si no tiene acceso */}
       {!hasAccess && (
         <div className="mt-6 rounded-2xl border border-orange-500/20 bg-orange-500/5 p-4 text-center">
           <p className="text-sm text-zinc-400">
@@ -234,4 +309,21 @@ export default function BidSection({
       )}
     </div>
   );
+}
+
+function formatTimeLeft(endDate: Date): string {
+  const now = new Date();
+  const diff = endDate.getTime() - now.getTime();
+  
+  if (diff <= 0) return "Subasta finalizada";
+  
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((diff % (86400000)) / (1000 * 60 * 60));
+  const minutes = Math.floor((diff % (3600000)) / (1000 * 60));
+  const seconds = Math.floor((diff % (60000)) / 1000);
+  
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
 }

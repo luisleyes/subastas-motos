@@ -1,93 +1,85 @@
-// src/components/BoldPaymentButton.tsx
 "use client";
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { Lock } from "lucide-react";
+import BoldCheckout from "./BoldCheckout";
+import { formatPrice } from "@/lib/formatPrice";
 
-interface BoldPaymentButtonProps {
-  amount: number;
-  description: string;
-  type: "bid_access" | "contact_access";
+interface UnlockBidAccessProps {
   motorcycleId: string;
-  onSuccess?: () => void;
-  buttonText?: string;
+  userId?: string;
 }
 
-declare global {
-  interface Window {
-    BoldPaymentButton?: any;
-  }
-}
-
-export default function BoldPaymentButton({
-  amount,
-  description,
-  type,
+export default function UnlockBidAccess({
   motorcycleId,
-  onSuccess,
-  buttonText = "Pagar con Bold",
-}: BoldPaymentButtonProps) {
-  const [isLoading, setIsLoading] = useState(true);
-  const [orderId, setOrderId] = useState("");
+  userId,
+}: UnlockBidAccessProps) {
+  const [hasAccess, setHasAccess] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Cargar el script de Bold
-    const script = document.createElement("script");
-    script.src = "https://checkout.bold.co/library/boldPaymentButton.js";
-    script.async = true;
-    script.onload = () => setIsLoading(false);
-    document.head.appendChild(script);
+    const checkAccess = async () => {
+      if (!userId) {
+        setLoading(false);
+        return;
+      }
 
-    // Generar orderId único
-    const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      const newOrderId = `${type}-${motorcycleId}-${Date.now()}`;
-      setOrderId(newOrderId);
-      
-      // Guardar referencia en la base de datos
-      await supabase.from("unlock_payments").insert([
-        {
-          user_id: session?.user?.id,
-          motorcycle_id: motorcycleId,
-          payment_reference: newOrderId,
-          type: type,
-          amount: amount,
-          status: "pending",
-        },
-      ]);
+      const { data } = await supabase
+        .from("unlock_payments")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("motorcycle_id", motorcycleId)
+        .eq("type", "bid_access")
+        .eq("status", "completed")
+        .single();
+
+      setHasAccess(!!data);
+      setLoading(false);
     };
-    
-    init();
-  }, []);
 
-  if (isLoading) {
+    checkAccess();
+  }, [motorcycleId, userId]);
+
+  if (loading) {
     return (
-      <button
-        disabled
-        className="w-full rounded-2xl bg-zinc-800 py-4 font-black text-zinc-500"
-      >
-        Cargando...
-      </button>
+      <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-6 text-center">
+        <p className="text-zinc-500">Verificando acceso...</p>
+      </div>
+    );
+  }
+
+  if (hasAccess) {
+    return (
+      <div className="rounded-2xl border border-green-500/30 bg-green-500/10 p-6 text-center">
+        <p className="font-bold text-green-400">
+          ✅ Ya tienes acceso para pujar
+        </p>
+      </div>
     );
   }
 
   return (
-    <div
-      dangerouslySetInnerHTML={{
-        __html: `
-          <script
-            data-bold-button
-            data-api-key="${process.env.NEXT_PUBLIC_BOLD_PUBLIC_KEY || "Ma_MBrH4u-o0kyzdO5DdfhcdJ7LTNKmww6jtmrBcxVc"}"
-            data-amount="${amount}"
-            data-currency="COP"
-            data-order-id="${orderId}"
-            data-description="${description}"
-            data-redirection-url="${process.env.NEXT_PUBLIC_BASE_URL}/payment/success?reference=${orderId}"
-            data-render-mode="embedded"
-            data-bold-button="dark-L"
-          ></script>
-        `,
-      }}
-    />
+    <div className="rounded-2xl border border-orange-500/30 bg-orange-500/10 p-6 text-center">
+      <Lock className="mx-auto h-8 w-8 text-orange-500" />
+
+      <p className="mt-3 text-lg font-bold text-orange-400">
+        Desbloquear acceso a la subasta
+      </p>
+
+      <p className="mt-2 text-sm text-zinc-400">
+        Para participar en esta subasta debes desbloquear el acceso.
+      </p>
+
+      <div className="mt-6">
+        <BoldCheckout
+          amount={10000}
+          description={`Acceso a pujas - Moto ${motorcycleId}`}
+          motorcycleId={motorcycleId}
+          type="bid_access"
+          buttonText={`Pagar ${formatPrice(10000)} y participar`}
+        />
+      </div>
+    </div>
   );
 }

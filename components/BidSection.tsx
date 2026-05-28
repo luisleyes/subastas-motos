@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { calculateBidIncrement } from "@/lib/bidIncrement";
 import { formatPrice } from "@/lib/formatPrice";
-import { extendAuctionIfNeeded } from "@/lib/antisniper";
+import { extendAuctionIfNeeded } from "@/lib/antiSniper";
 
 interface Bid {
   id: string;

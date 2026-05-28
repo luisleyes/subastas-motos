@@ -1,8 +1,5 @@
-// next.config.js
-const path = require('path');
+import type { NextConfig } from "next";
 
-module.exports = {
-  turbopack: {
-    root: path.join(__dirname), // esto limita el escaneo SOLO a tu carpeta de proyecto
-  },
-};
+const nextConfig: NextConfig = {};
+
+export default nextConfig;

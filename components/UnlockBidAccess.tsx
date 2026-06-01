@@ -24,56 +24,90 @@ export default function UnlockBidAccess({
 
   useEffect(() => {
     const init = async () => {
-      if (!userId) {
+      try {
+        if (!userId) {
+          setLoading(false);
+          return;
+        }
+
+        setLoading(true);
+
+        // Verificar si ya tiene acceso
+        const { data } = await supabase
+          .from("unlock_payments")
+          .select("*")
+          .eq("user_id", userId)
+          .eq("motorcycle_id", motorcycleId)
+          .eq("type", "bid_access")
+          .eq("status", "completed")
+          .single();
+
+        setHasAccess(!!data);
+
+        if (data) {
+          setLoading(false);
+          return;
+        }
+
+        // OrderId corto para pruebas
+        const orderId = `bid${Date.now()}`;
+
+        // Guardar pago pendiente
+        await supabase.from("unlock_payments").insert([
+          {
+            user_id: userId,
+            motorcycle_id: motorcycleId,
+            payment_reference: orderId,
+            type: "bid_access",
+            amount: 10000,
+            status: "pending",
+          },
+        ]);
+
+        // Generar hash de integridad
+        const hashResponse = await fetch("/api/bold/generate-hash", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            orderId,
+            amount: 10000,
+            currency: "COP",
+          }),
+        });
+
+        const hashData = await hashResponse.json();
+
+        if (!hashData?.hash) {
+          console.error("No se pudo generar el hash de Bold");
+          setLoading(false);
+          return;
+        }
+
+        // FORZAMOS URL PÚBLICA
+        const baseUrl = "https://subastas-motos.vercel.app";
+
+        // Crear botón Bold
+        setButtonHtml(`
+          <script
+            data-bold-button="dark-L"
+            data-api-key="${process.env.NEXT_PUBLIC_BOLD_PUBLIC_KEY}"
+            data-amount="10000"
+            data-currency="COP"
+            data-order-id="${orderId}"
+            data-integrity-signature="${hashData.hash}"
+            data-description="Acceso para pujar en subasta"
+            data-redirection-url="${baseUrl}/payment/success?reference=${orderId}"
+            data-render-mode="embedded"
+            src="https://checkout.bold.co/library/boldPaymentButton.js"
+          ></script>
+        `);
+      } catch (error) {
+        console.error("Error inicializando Bold:", error);
+      } finally {
         setLoading(false);
-        return;
       }
-
-      setLoading(true);
-
-      // verificar acceso
-      const { data } = await supabase
-        .from("unlock_payments")
-        .select("*")
-        .eq("user_id", userId)
-        .eq("motorcycle_id", motorcycleId)
-        .eq("type", "bid_access")
-        .eq("status", "completed")
-        .single();
-
-      setHasAccess(!!data);
-
-      // generar order id único
-      const orderId = `bid-${motorcycleId}-${Date.now()}`;
-
-      // guardar pago pendiente
-      await supabase.from("unlock_payments").insert([
-        {
-          user_id: userId,
-          motorcycle_id: motorcycleId,
-          payment_reference: orderId,
-          type: "bid_access",
-          amount: 10000,
-          status: "pending",
-        },
-      ]);
-
-      // crear HTML del botón
-      setButtonHtml(`
-        <script
-          data-bold-button="dark-L"
-          data-api-key="${process.env.NEXT_PUBLIC_BOLD_PUBLIC_KEY}"
-          data-amount="10000"
-          data-currency="COP"
-          data-order-id="${orderId}"
-          data-description="Acceso para pujar en subasta"
-          data-redirection-url="http://localhost:3000/payment/success?reference=${orderId}"
-          data-render-mode="embedded"
-          src="https://checkout.bold.co/library/boldPaymentButton.js"
-        ></script>
-      `);
-
-      setLoading(false);
     };
 
     init();

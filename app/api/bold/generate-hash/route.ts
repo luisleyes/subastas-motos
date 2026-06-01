@@ -15,22 +15,13 @@ export async function POST(req: NextRequest) {
     }
 
     console.log("========== BOLD HASH ==========");
-    console.log("orderId recibido:", orderId);
-    console.log("amount recibido:", amount);
-    console.log("currency recibida:", currency);
-    console.log("secretKey:", secretKey);
+    console.log("orderId:", orderId);
+    console.log("amount:", amount);
+    console.log("currency:", currency);
 
-    // PRUEBA TEMPORAL
-    const testOrderId = "bid123";
-    const testAmount = 10000;
-    const testCurrency = "COP";
+    // Hash real usando los valores recibidos
+    const concatenated = `${orderId}${amount}${currency}${secretKey}`;
 
-    const concatenated =
-      `${testOrderId}${testAmount}${testCurrency}${secretKey}`;
-
-    console.log("TEST orderId:", testOrderId);
-    console.log("TEST amount:", testAmount);
-    console.log("TEST currency:", testCurrency);
     console.log("concatenated:", concatenated);
 
     const hash = crypto

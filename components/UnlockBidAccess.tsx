@@ -32,39 +32,37 @@ export default function UnlockBidAccess({
 
         setLoading(true);
 
-        // Verificar si ya tiene acceso
-        const { data } = await supabase
+        // Verificar acceso existente
+        const { data: existingPayment } = await supabase
           .from("unlock_payments")
           .select("*")
           .eq("user_id", userId)
           .eq("motorcycle_id", motorcycleId)
           .eq("type", "bid_access")
           .eq("status", "completed")
-          .single();
+          .maybeSingle();
 
-        setHasAccess(!!data);
-
-        if (data) {
+        if (existingPayment) {
+          setHasAccess(true);
           setLoading(false);
           return;
         }
 
-        // OrderId corto para pruebas
         const orderId = `bid${Date.now()}`;
 
-        // Guardar pago pendiente
+        // IMPORTANTE:
+        // usamos payment_id porque NO existe payment_reference
         await supabase.from("unlock_payments").insert([
           {
             user_id: userId,
             motorcycle_id: motorcycleId,
-            payment_reference: orderId,
+            payment_id: orderId,
             type: "bid_access",
             amount: 10000,
             status: "pending",
           },
         ]);
 
-        // Generar hash de integridad
         const hashResponse = await fetch("/api/bold/generate-hash", {
           method: "POST",
           headers: {
@@ -80,15 +78,13 @@ export default function UnlockBidAccess({
         const hashData = await hashResponse.json();
 
         if (!hashData?.hash) {
-          console.error("No se pudo generar el hash de Bold");
+          console.error("No se pudo generar el hash");
           setLoading(false);
           return;
         }
 
-        // FORZAMOS URL PÚBLICA
         const baseUrl = "https://subastas-motos.vercel.app";
 
-        // Crear botón Bold
         setButtonHtml(`
           <script
             data-bold-button="dark-L"

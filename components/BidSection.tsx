@@ -4,10 +4,10 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { calculateBidIncrement } from "@/lib/bidIncrement";
 import { formatPrice } from "@/lib/formatPrice";
-import { extendAuctionIfNeeded } from "@/lib/antiSniper";
 
 interface Bid {
   id: string;
+  user_id: string;
   bidder_name: string;
   amount: number;
   created_at: string;
@@ -24,26 +24,66 @@ export default function BidSection({
   initialEndTime?: string;
 }) {
   const [bids, setBids] = useState<Bid[]>([]);
-  const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
   const [hasAccess, setHasAccess] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [participants, setParticipants] = useState(0);
   const [highestBid, setHighestBid] = useState(basePrice);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [userDisplayName, setUserDisplayName] = useState<string>("");
   const [endTime, setEndTime] = useState<Date | null>(
     initialEndTime ? new Date(initialEndTime) : null
   );
+  const [timeLeftText, setTimeLeftText] = useState("");
 
   // Calcular incremento mínimo dinámico
   const minimumIncrement = calculateBidIncrement(participants);
   const minimumAllowedBid = highestBid + minimumIncrement;
 
-  // Cargar bids iniciales
+  // 🔄 Timer en tiempo real
   useEffect(() => {
-    fetchBids();
-    checkAccess();
+    if (!endTime) return;
+    
+    const updateTimeLeft = () => {
+      setTimeLeftText(formatTimeLeft(endTime));
+    };
+    
+    updateTimeLeft();
+    const interval = setInterval(updateTimeLeft, 1000);
+    
+    return () => clearInterval(interval);
+  }, [endTime]);
 
-    // Obtener el tiempo de finalización actual
+  // Obtener usuario actual
+  useEffect(() => {
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setUserId(user.id);
+        // 🟡 Mejor generación de nombre mostrado
+        const displayName = 
+          user.user_metadata?.username ||
+          user.email?.split("@")[0] ||
+          user.id.slice(0, 8);
+        setUserDisplayName(displayName);
+      }
+    };
+    getUser();
+  }, []);
+
+  // 🔴 CRÍTICO #1: checkAccess se ejecuta cuando llega userId
+  useEffect(() => {
+    if (userId) {
+      checkAccess();
+    }
+  }, [userId, motorcycleId]);
+
+  // Cargar bids iniciales (sin checkAccess aquí)
+  useEffect(() => {
+    if (!motorcycleId) return;
+    
+    fetchBids();
+
     const fetchEndTime = async () => {
       const { data } = await supabase
         .from("motorcycles")
@@ -56,6 +96,7 @@ export default function BidSection({
     };
     fetchEndTime();
 
+    // 🔴 CRÍTICO #2 y #3: Realtime corregido
     const channel = supabase
       .channel("bids-realtime")
       .on(
@@ -68,10 +109,22 @@ export default function BidSection({
         },
         (payload) => {
           const newBid = payload.new as Bid;
-          setBids((prev) => [newBid, ...prev]);
-          if (newBid.amount > highestBid) {
-            setHighestBid(newBid.amount);
-          }
+          
+          // Actualizar bids y participantes atómicamente
+          setBids((prev) => {
+            const updated = [newBid, ...prev];
+            
+            // Recalcular participantes únicos
+            const uniqueParticipants = new Set(
+              updated.map(b => b.user_id).filter(Boolean)
+            ).size;
+            setParticipants(uniqueParticipants);
+            
+            return updated;
+          });
+          
+          // 🔴 CRÍTICO #2: Actualizar highestBid correctamente
+          setHighestBid((prev) => Math.max(prev, newBid.amount));
         }
       )
       .subscribe();
@@ -90,7 +143,7 @@ export default function BidSection({
 
     if (data) {
       setBids(data);
-      const uniqueParticipants = new Set(data.map(b => b.bidder_name)).size;
+      const uniqueParticipants = new Set(data.map(b => b.user_id).filter(Boolean)).size;
       setParticipants(uniqueParticipants);
       if (data.length > 0) {
         setHighestBid(data[0].amount);
@@ -99,23 +152,34 @@ export default function BidSection({
   }
 
   async function checkAccess() {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!userId) return;
 
     const { data } = await supabase
       .from("bid_access")
       .select("*")
-      .eq("user_id", user.id)
+      .eq("user_id", userId)
+      .eq("motorcycle_id", motorcycleId)
       .eq("active", true)
       .single();
 
-    if (data) {
-      setHasAccess(true);
+    setHasAccess(!!data);
+  }
+
+  // 🟡 Función para ofuscar nombre (opcional)
+  function obfuscateName(name: string): string {
+    if (name.length <= 6) {
+      return name.substring(0, 3) + "***";
     }
+    return name.substring(0, 4) + "***" + name.substring(name.length - 2);
   }
 
   async function placeBid() {
-    // 🔒 PASO 4: Verificar que la subasta está activa (vendida o finalizada)
+    if (!userId) {
+      alert("Debes iniciar sesión para pujar");
+      return;
+    }
+
+    // Verificar que la subasta está activa
     const { data: motorcycle } = await supabase
       .from("motorcycles")
       .select("status")
@@ -124,11 +188,6 @@ export default function BidSection({
 
     if (motorcycle?.status !== "active") {
       alert("⚠️ Esta subasta ya no está activa (vendida o finalizada)");
-      return;
-    }
-
-    if (!name.trim()) {
-      alert("Por favor ingresa tu nombre");
       return;
     }
 
@@ -145,47 +204,48 @@ export default function BidSection({
 
     setIsLoading(true);
 
-    // 🔥 ANTI-SNIPER: Verificar si necesitamos extender la subasta
-    let newEndTime = endTime;
-    if (endTime) {
-      const extendedEndTime = extendAuctionIfNeeded(endTime);
-      if (extendedEndTime.getTime() !== endTime.getTime()) {
-        newEndTime = extendedEndTime;
-        // Actualizar en la base de datos
-        await supabase
-          .from("motorcycles")
-          .update({ auction_end: extendedEndTime.toISOString() })
-          .eq("id", motorcycleId);
-        
-        setEndTime(extendedEndTime);
-        alert(`⏰ ¡Subasta extendida! Nueva fecha de cierre: ${extendedEndTime.toLocaleString()}`);
+    try {
+      // Anti-sniper con RPC
+      const { data: extendedEndTime, error: extendError } = await supabase
+        .rpc('extend_auction_if_needed', {
+          p_motorcycle_id: motorcycleId
+        });
+
+      if (extendError) {
+        console.error("Error extendiendo subasta:", extendError);
+      } else if (extendedEndTime && new Date(extendedEndTime) > (endTime || new Date())) {
+        setEndTime(new Date(extendedEndTime));
+        alert(`⏰ ¡Subasta extendida! Nueva fecha de cierre: ${new Date(extendedEndTime).toLocaleString()}`);
       }
+
+      // Insertar puja
+      const { error } = await supabase
+        .from("bids")
+        .insert([
+          {
+            motorcycle_id: motorcycleId,
+            user_id: userId,
+            bidder_name: userDisplayName,
+            amount: bidAmount,
+          },
+        ]);
+
+      if (error) {
+        console.error("Error al pujar:", error);
+        alert("❌ Error realizando puja");
+      } else {
+        alert(`✅ Puja de ${formatPrice(bidAmount)} realizada con éxito!`);
+        setAmount("");
+      }
+    } catch (error) {
+      console.error("Error:", error);
+      alert("❌ Error al procesar la puja");
+    } finally {
+      setIsLoading(false);
     }
-
-    const { error } = await supabase
-      .from("bids")
-      .insert([
-        {
-          motorcycle_id: motorcycleId,
-          bidder_name: name,
-          amount: bidAmount,
-        },
-      ]);
-
-    if (error) {
-      console.error("Error al pujar:", error);
-      alert("❌ Error realizando puja");
-    } else {
-      alert(`✅ Puja de ${formatPrice(bidAmount)} realizada con éxito!`);
-      setAmount("");
-      setHighestBid(bidAmount);
-    }
-
-    setIsLoading(false);
   }
 
   const currentPrice = highestBid;
-  const timeLeftText = endTime ? formatTimeLeft(endTime) : "No definido";
 
   return (
     <div className="mt-10 rounded-3xl border border-zinc-800 bg-zinc-950 p-8">
@@ -203,7 +263,7 @@ export default function BidSection({
         </h3>
       </div>
 
-      {/* Tiempo restante */}
+      {/* Tiempo restante con timer real */}
       {endTime && (
         <div className="mb-6 rounded-2xl border border-orange-500/20 bg-orange-500/5 p-4 text-center">
           <p className="text-sm text-zinc-400">⏰ Tiempo restante</p>
@@ -234,14 +294,11 @@ export default function BidSection({
       </div>
 
       {/* Inputs */}
-      <div className="grid gap-4 md:grid-cols-2">
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Tu nombre"
-          disabled={!hasAccess}
-          className={`rounded-2xl border border-zinc-700 bg-black p-4 text-white ${!hasAccess ? 'cursor-not-allowed opacity-50' : ''}`}
-        />
+      <div className="grid gap-4 md:grid-cols-1">
+        <div className="rounded-2xl border border-zinc-700 bg-black p-4 text-white">
+          <p className="text-sm text-zinc-400">Pujando como:</p>
+          <p className="font-bold text-orange-500">{userDisplayName || "Cargando..."}</p>
+        </div>
         <input
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
@@ -270,7 +327,7 @@ export default function BidSection({
         </button>
       )}
 
-      {/* Historial */}
+      {/* Historial con nombres ofuscados (opcional) */}
       <div className="mt-10 space-y-4">
         <h3 className="text-xl font-bold text-white">Historial de pujas</h3>
         {bids.length === 0 ? (
@@ -284,8 +341,10 @@ export default function BidSection({
               className="flex items-center justify-between rounded-2xl border border-zinc-800 bg-black p-4 transition hover:border-orange-500/30"
             >
               <div>
-                <p className="font-bold text-white">{bid.bidder_name}</p>
-                <p className="text-sm text-zinc-500">
+                <p className="font-bold text-white">
+                  {obfuscateName(bid.bidder_name)}
+                </p>
+                <p className="text-xs text-zinc-500">
                   {new Date(bid.created_at).toLocaleString()}
                 </p>
               </div>

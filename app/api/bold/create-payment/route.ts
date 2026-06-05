@@ -37,38 +37,36 @@ export async function POST(req: NextRequest) {
     // REFERENCIA ÚNICA
     const reference = `${type}-${motorcycleId}-${Date.now()}`;
 
-    // LINK BASE DE BOLD
-    const baseUrl = getBoldPaymentLink(type);
+    const boldLink = getBoldPaymentLink(type);
 
-    if (!baseUrl) {
+    if (!boldLink) {
       return NextResponse.json(
         { error: "Link de pago no configurado" },
         { status: 500 }
       );
     }
 
-    // URL CORRECTA
-    const paymentUrl = new URL(baseUrl);
+    const paymentUrl = new URL(boldLink);
 
     paymentUrl.searchParams.set("order-id", reference);
+    paymentUrl.searchParams.set("description", description);
 
-    paymentUrl.searchParams.set(
-      "description",
-      description
-    );
+    const siteBaseUrl =
+      process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
 
     paymentUrl.searchParams.set(
       "redirection-url",
-      `${process.env.NEXT_PUBLIC_BASE_URL}/payment/success?reference=${reference}`
+      `${siteBaseUrl}/payment/success?reference=${encodeURIComponent(reference)}&status=approved`
     );
 
-    // GUARDAR PAGO
+    // GUARDAR PAGO (payment_id = referencia única para success/webhook)
     const { error: insertError } = await supabase
       .from("unlock_payments")
       .insert([
         {
           user_id: user.id,
           motorcycle_id: motorcycleId,
+          payment_id: reference,
           payment_reference: reference,
           type,
           amount,

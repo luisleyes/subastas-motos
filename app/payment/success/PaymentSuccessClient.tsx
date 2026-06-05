@@ -1,24 +1,44 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { CheckCircle, Loader2, XCircle } from "lucide-react";
 import Link from "next/link";
 
+type PaymentType = "bid_access" | "buy_now" | "contact_access" | string;
+
+const MESSAGES: Record<string, { title: string; description: string }> = {
+  bid_access: {
+    title: "¡Acceso desbloqueado!",
+    description:
+      "Ya puedes pujar en esta subasta. Vuelve a la ficha de la moto.",
+  },
+  buy_now: {
+    title: "¡Compra confirmada!",
+    description:
+      "La subasta se cerró y eres el comprador. Revisa la moto en tu perfil.",
+  },
+  contact_access: {
+    title: "¡Contacto desbloqueado!",
+    description: "Ya puedes ver los datos del vendedor en la subasta.",
+  },
+};
+
 export default function PaymentSuccessClient() {
   const searchParams = useSearchParams();
-  const router = useRouter();
 
   const [loading, setLoading] = useState(true);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState(false);
+  const [paymentType, setPaymentType] = useState<PaymentType>("bid_access");
+  const [motorcycleId, setMotorcycleId] = useState<string | null>(null);
 
   const reference = searchParams.get("reference");
   const orderId = searchParams.get("order-id");
   const boldOrderId = searchParams.get("bold-order-id");
 
-  const status =
+  const txStatus =
     searchParams.get("status") ||
     searchParams.get("transaction_status") ||
     searchParams.get("tx-status") ||
@@ -27,97 +47,52 @@ export default function PaymentSuccessClient() {
   useEffect(() => {
     const verifyPayment = async () => {
       try {
-        console.log("🔍 URL PARAMS", {
-          reference,
-          orderId,
-          boldOrderId,
-          status,
-        });
-
-        if (status !== "approved") {
-          if (status) {
-            setError(true);
-          } else {
-            setTimeout(() => {
-              router.push("/");
-            }, 3000);
-          }
-
-          setLoading(false);
-          return;
-        }
-
-        const paymentReference =
-          reference || orderId || boldOrderId;
+        const paymentReference = reference || orderId || boldOrderId;
 
         if (!paymentReference) {
-          console.error("❌ No llegó referencia de pago");
           setError(true);
           setLoading(false);
           return;
         }
 
-        console.log("🔍 Buscando pago:", paymentReference);
-
-        const { data: payment, error: paymentError } =
-          await supabase
-            .from("unlock_payments")
-            .select("*")
-            .eq("payment_id", paymentReference)
-            .single();
-
-        console.log("PAYMENT:", payment);
-        console.log("PAYMENT ERROR:", paymentError);
-
-        if (paymentError || !payment) {
-          console.error("❌ Pago no encontrado");
+        if (txStatus && txStatus !== "approved") {
           setError(true);
           setLoading(false);
           return;
         }
 
-        if (payment.status === "pending") {
-          const { error: updateError } = await supabase
-            .from("unlock_payments")
-            .update({
-              status: "completed",
-            })
-            .eq("id", payment.id);
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
 
-          console.log("UPDATE ERROR:", updateError);
-
-          if (updateError) {
-            setError(true);
-            setLoading(false);
-            return;
-          }
-
-          if (payment.type === "bid_access") {
-            const { error: accessError } = await supabase
-              .from("bid_access")
-              .upsert(
-                {
-                  user_id: payment.user_id,
-                  motorcycle_id: payment.motorcycle_id,
-                  active: true,
-                  activated_at: new Date().toISOString(),
-                },
-                {
-                  onConflict: "user_id,motorcycle_id",
-                }
-              );
-
-            console.log("BID ACCESS ERROR:", accessError);
-
-            if (accessError) {
-              console.error(accessError);
-            }
-          }
+        if (!session?.access_token) {
+          setError(true);
+          setLoading(false);
+          return;
         }
 
+        const response = await fetch("/api/payments/fulfill", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ reference: paymentReference }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          setError(true);
+          setLoading(false);
+          return;
+        }
+
+        setPaymentType(data.type || "bid_access");
+        setMotorcycleId(data.motorcycleId || null);
         setSuccess(true);
       } catch (err) {
-        console.error("❌ ERROR:", err);
+        console.error("verify payment:", err);
         setError(true);
       } finally {
         setLoading(false);
@@ -125,21 +100,15 @@ export default function PaymentSuccessClient() {
     };
 
     verifyPayment();
-  }, [
-    reference,
-    orderId,
-    boldOrderId,
-    status,
-    router,
-  ]);
+  }, [reference, orderId, boldOrderId, txStatus]);
+
+  const copy = MESSAGES[paymentType] || MESSAGES.bid_access;
 
   if (loading) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center bg-black">
         <Loader2 className="h-12 w-12 animate-spin text-orange-500" />
-        <p className="mt-4 text-zinc-400">
-          Verificando tu pago...
-        </p>
+        <p className="mt-4 text-zinc-400">Verificando tu pago...</p>
       </main>
     );
   }
@@ -149,15 +118,18 @@ export default function PaymentSuccessClient() {
       <main className="flex min-h-screen flex-col items-center justify-center bg-black px-6">
         <div className="text-center">
           <XCircle className="mx-auto h-20 w-20 text-red-500" />
-
           <h1 className="mt-6 text-4xl font-black text-white">
             Pago no completado
           </h1>
-
           <p className="mt-4 text-zinc-400">
-            No pudimos verificar tu pago.
+            No pudimos confirmar tu pago. Si ya pagaste, espera unos minutos o
+            contacta soporte con tu referencia.
           </p>
-
+          {reference && (
+            <p className="mt-2 font-mono text-sm text-zinc-500">
+              Ref: {reference}
+            </p>
+          )}
           <div className="mt-8">
             <Link
               href="/"
@@ -175,23 +147,23 @@ export default function PaymentSuccessClient() {
     <main className="flex min-h-screen flex-col items-center justify-center bg-black px-6">
       <div className="text-center">
         <CheckCircle className="mx-auto h-20 w-20 text-green-500" />
-
-        <h1 className="mt-6 text-4xl font-black text-white">
-          ¡Pago exitoso!
-        </h1>
-
-        <p className="mt-4 text-zinc-400">
-          Tu acceso para pujar fue desbloqueado correctamente.
-        </p>
-
-        <div className="mt-8 flex gap-4">
+        <h1 className="mt-6 text-4xl font-black text-white">{copy.title}</h1>
+        <p className="mt-4 text-zinc-400">{copy.description}</p>
+        <div className="mt-8 flex flex-wrap justify-center gap-4">
+          {motorcycleId && (
+            <Link
+              href={`/subasta/${motorcycleId}`}
+              className="rounded-2xl bg-green-500 px-6 py-3 font-black text-black transition hover:bg-green-400"
+            >
+              Ver subasta
+            </Link>
+          )}
           <Link
             href="/"
             className="rounded-2xl bg-orange-500 px-6 py-3 font-black text-black transition hover:bg-orange-400"
           >
-            Volver al inicio
+            Inicio
           </Link>
-
           <Link
             href="/dashboard"
             className="rounded-2xl border border-zinc-700 px-6 py-3 font-black text-white transition hover:border-orange-500 hover:text-orange-500"

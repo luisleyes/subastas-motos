@@ -18,18 +18,19 @@ export async function POST(req: NextRequest) {
     console.log("orderId:", orderId);
     console.log("amount:", amount);
     console.log("currency:", currency);
+    console.log("secretKey:", secretKey);
 
-    // Hash real usando los valores recibidos
+    // Bold requiere: SHA256(orderId + amount + currency + secretKey)
     const concatenated = `${orderId}${amount}${currency}${secretKey}`;
 
-    console.log("concatenated:", concatenated);
+    console.log("concatenated string:", concatenated);
 
     const hash = crypto
       .createHash("sha256")
       .update(concatenated)
       .digest("hex");
 
-    console.log("hash:", hash);
+    console.log("generated hash:", hash);
     console.log("================================");
 
     return NextResponse.json({ hash });

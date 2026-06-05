@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Script from "next/script";
 import { usePathname } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { formatPrice } from "@/lib/formatPrice";
+import { BID_ACCESS_AMOUNT } from "@/lib/bold";
 import { Lock } from "lucide-react";
+import BoldPaymentButton from "@/components/BoldPaymentButton";
 
 interface UnlockBidAccessProps {
   motorcycleId: string;
@@ -20,7 +21,14 @@ export default function UnlockBidAccess({
 
   const [hasAccess, setHasAccess] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [buttonHtml, setButtonHtml] = useState("");
+  const [buttonAttrs, setButtonAttrs] = useState<null | {
+    orderId: string;
+    amount: number;
+    currency: string;
+    hash: string;
+    redirectUrl: string;
+    description: string;
+  }>(null);
 
   useEffect(() => {
     const init = async () => {
@@ -32,33 +40,29 @@ export default function UnlockBidAccess({
 
         setLoading(true);
 
-        // Verificar acceso existente
-        const { data: existingPayment } = await supabase
-          .from("unlock_payments")
-          .select("*")
+        const { data: existingAccess } = await supabase
+          .from("bid_access")
+          .select("id")
           .eq("user_id", userId)
           .eq("motorcycle_id", motorcycleId)
-          .eq("type", "bid_access")
-          .eq("status", "completed")
+          .eq("active", true)
           .maybeSingle();
 
-        if (existingPayment) {
+        if (existingAccess) {
           setHasAccess(true);
           setLoading(false);
           return;
         }
 
-        const orderId = `bid${Date.now()}`;
+        const orderId = `bid-${motorcycleId}-${Date.now()}`;
 
-        // IMPORTANTE:
-        // usamos payment_id porque NO existe payment_reference
         await supabase.from("unlock_payments").insert([
           {
             user_id: userId,
             motorcycle_id: motorcycleId,
             payment_id: orderId,
             type: "bid_access",
-            amount: 10000,
+            amount: BID_ACCESS_AMOUNT,
             status: "pending",
           },
         ]);
@@ -70,7 +74,7 @@ export default function UnlockBidAccess({
           },
           body: JSON.stringify({
             orderId,
-            amount: 10000,
+            amount: BID_ACCESS_AMOUNT,
             currency: "COP",
           }),
         });
@@ -83,22 +87,17 @@ export default function UnlockBidAccess({
           return;
         }
 
-        const baseUrl = "https://subastas-motos.vercel.app";
+        const baseUrl =
+          process.env.NEXT_PUBLIC_BASE_URL || window.location.origin;
 
-        setButtonHtml(`
-          <script
-            data-bold-button="dark-L"
-            data-api-key="${process.env.NEXT_PUBLIC_BOLD_PUBLIC_KEY}"
-            data-amount="10000"
-            data-currency="COP"
-            data-order-id="${orderId}"
-            data-integrity-signature="${hashData.hash}"
-            data-description="Acceso para pujar en subasta"
-            data-redirection-url="${baseUrl}/payment/success?reference=${orderId}"
-            data-render-mode="embedded"
-            src="https://checkout.bold.co/library/boldPaymentButton.js"
-          ></script>
-        `);
+        setButtonAttrs({
+          orderId,
+          amount: BID_ACCESS_AMOUNT,
+          currency: "COP",
+          hash: hashData.hash,
+          redirectUrl: `${baseUrl}/payment/success?reference=${orderId}&status=approved`,
+          description: "Acceso para pujar en subasta",
+        });
       } catch (error) {
         console.error("Error inicializando Bold:", error);
       } finally {
@@ -129,11 +128,6 @@ export default function UnlockBidAccess({
 
   return (
     <div className="rounded-2xl border border-orange-500/30 bg-orange-500/10 p-6 text-center">
-      <Script
-        src="https://checkout.bold.co/library/boldPaymentButton.js"
-        strategy="afterInteractive"
-      />
-
       <Lock className="mx-auto h-8 w-8 text-orange-500" />
 
       <p className="mt-3 text-lg font-bold text-orange-400">
@@ -141,15 +135,19 @@ export default function UnlockBidAccess({
       </p>
 
       <p className="mt-2 text-sm text-zinc-400">
-        Paga {formatPrice(10000)} para participar en esta subasta
+        Paga {formatPrice(BID_ACCESS_AMOUNT)} para participar en esta subasta
       </p>
 
-      <div
-        className="mt-6 flex justify-center"
-        dangerouslySetInnerHTML={{
-          __html: buttonHtml,
-        }}
-      />
+      {buttonAttrs && (
+        <BoldPaymentButton
+          orderId={buttonAttrs.orderId}
+          amount={buttonAttrs.amount}
+          currency={buttonAttrs.currency}
+          hash={buttonAttrs.hash}
+          description={buttonAttrs.description}
+          redirectUrl={buttonAttrs.redirectUrl}
+        />
+      )}
     </div>
   );
-}
+} 

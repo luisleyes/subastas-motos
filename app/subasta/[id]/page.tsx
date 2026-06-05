@@ -6,7 +6,6 @@ import BidSection from "@/components/BidSection";
 import LiveBids from "@/components/LiveBids";
 import BuyNow from "@/components/BuyNow";
 import UnlockBidAccess from "@/components/UnlockBidAccess";
-import UnlockContact from "@/components/UnlockContact";
 import { calculateBidIncrement } from "@/lib/bidIncrement";
 import { formatPrice } from "@/lib/formatPrice";
 import { formatPlate } from "@/lib/formatPlate";
@@ -23,6 +22,7 @@ export default function SubastaPage({ params }: { params: Promise<{ id: string }
   const [endTime, setEndTime] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [hasBidAccess, setHasBidAccess] = useState(false);
+  const [liveBidPrice, setLiveBidPrice] = useState<number | null>(null);
 
   // Generar ID de sesión único
   useEffect(() => {
@@ -152,12 +152,18 @@ export default function SubastaPage({ params }: { params: Promise<{ id: string }
       // Obtener participantes (pujadores únicos)
       const { data: bids } = await supabase
         .from("bids")
-        .select("bidder_name")
-        .eq("motorcycle_id", id);
-      
-      const uniqueParticipants = new Set(bids?.map(b => b.bidder_name) || []).size;
+        .select("bidder_name, amount")
+        .eq("motorcycle_id", id)
+        .order("amount", { ascending: false });
+
+      const uniqueParticipants = new Set(bids?.map((b) => b.bidder_name) || [])
+        .size;
       setParticipants(uniqueParticipants);
-      
+
+      if (bids && bids.length > 0) {
+        setLiveBidPrice(bids[0].amount);
+      }
+
       setLoading(false);
     };
 
@@ -184,9 +190,10 @@ export default function SubastaPage({ params }: { params: Promise<{ id: string }
             setMotorcycle((prev: any) => ({ ...prev, auction_end: payload.new.auction_end }));
           }
           // También actualizar el status si cambió
-          if (payload.new.status !== motorcycle?.status) {
-            setMotorcycle((prev: any) => ({ ...prev, status: payload.new.status }));
-          }
+          setMotorcycle((prev: any) => ({
+            ...prev,
+            ...payload.new,
+          }));
         }
       )
       .subscribe();
@@ -195,6 +202,35 @@ export default function SubastaPage({ params }: { params: Promise<{ id: string }
       supabase.removeChannel(channel);
     };
   }, [motorcycle?.id, endTime, motorcycle?.status]);
+
+  useEffect(() => {
+    if (!motorcycle?.id) return;
+
+    const channel = supabase
+      .channel(`subasta-bids-${motorcycle.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "bids",
+          filter: `motorcycle_id=eq.${motorcycle.id}`,
+        },
+        (payload) => {
+          const amount = (payload.new as { amount?: number }).amount;
+          if (amount != null) {
+            setLiveBidPrice((prev) =>
+              prev == null ? amount : Math.max(prev, amount)
+            );
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [motorcycle?.id]);
 
   if (loading) {
     return (
@@ -218,7 +254,8 @@ export default function SubastaPage({ params }: { params: Promise<{ id: string }
   const minimumIncrement = calculateBidIncrement(participants);
   const timeLeft = endTime ? getTimeLeft(endTime) : null;
   const isClosingSoon = timeLeft && timeLeft <= 2 * 60 * 1000 && timeLeft > 0;
-  const currentPrice = motorcycle.current_price || motorcycle.base_price;
+  const currentPrice =
+    liveBidPrice ?? motorcycle.current_price ?? motorcycle.base_price;
 
   // Determinar si mostrar placa completa o ofuscada
   const showFullPlate = hasBidAccess;
@@ -363,32 +400,53 @@ export default function SubastaPage({ params }: { params: Promise<{ id: string }
         </div>
 
         {/* ============================================ */}
-        {/* SECCIÓN DE CONTACTO CON EL VENDEDOR */}
+        {/* CÓMO FUNCIONA */}
         {/* ============================================ */}
         <div className="mt-12">
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-6">
-            <h3 className="mb-6 text-2xl font-black text-white flex items-center gap-2">
-              <Phone className="h-6 w-6 text-orange-500" />
-              Contactar vendedor
+          <div className="rounded-3xl border border-orange-500/20 bg-orange-500/5 p-8">
+            <h3 className="text-2xl font-black text-white mb-6">
+              ¿Cómo funciona?
             </h3>
-            
-            {userId ? (
-              <UnlockContact
-                motorcycleId={motorcycle.id}
-                userId={userId}
-                sellerWhatsapp={motorcycle.seller_whatsapp}
-                sellerPhone={motorcycle.seller_phone}
-                sellerName={motorcycle.seller_name}
-              />
-            ) : (
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-6 text-center">
-                <Lock className="mx-auto h-8 w-8 text-orange-500" />
-                <p className="mt-2 text-zinc-400">🔒 Inicia sesión para contactar al vendedor</p>
-                <Link href="/login" className="mt-3 inline-block text-orange-500 hover:underline">
-                  Iniciar sesión
-                </Link>
+
+            <div className="space-y-4 text-zinc-300">
+              <div className="flex gap-3">
+                <span className="font-black text-orange-500">1.</span>
+                <p>
+                  Participa en la subasta o utiliza la opción de compra inmediata.
+                </p>
               </div>
-            )}
+
+              <div className="flex gap-3">
+                <span className="font-black text-orange-500">2.</span>
+                <p>
+                  Si ganas la subasta o realizas la compra inmediata,
+                  obtendrás acceso exclusivo al contacto del vendedor.
+                </p>
+              </div>
+
+              <div className="flex gap-3">
+                <span className="font-black text-orange-500">3.</span>
+                <p>
+                  Comprador y vendedor negocian directamente entre sí.
+                </p>
+              </div>
+
+              <div className="flex gap-3">
+                <span className="font-black text-orange-500">4.</span>
+                <p>
+                  Subastas Motos no vende la motocicleta ni recibe el valor final
+                  de la negociación.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 rounded-2xl border border-yellow-500/20 bg-yellow-500/10 p-4">
+              <p className="text-sm text-yellow-300">
+                ⚠️ El pago realizado mediante Bold corresponde únicamente al
+                desbloqueo del contacto del vendedor y al acceso exclusivo a la
+                negociación directa.
+              </p>
+            </div>
           </div>
         </div>
 
@@ -401,6 +459,8 @@ export default function SubastaPage({ params }: { params: Promise<{ id: string }
               currentPrice={currentPrice}
               status={motorcycle.status}
               sellerId={motorcycle.user_id}
+              userId={userId}
+              auctionEnd={endTime}
               motorcycleTitle={`${motorcycle.brand} ${motorcycle.model}`}
             />
           </div>
@@ -423,10 +483,11 @@ export default function SubastaPage({ params }: { params: Promise<{ id: string }
         {/* Bid Section con initialEndTime para anti-sniper (solo si está activa) */}
         {motorcycle.status === "active" && (
           <div className="mt-12">
-            <BidSection 
-              motorcycleId={motorcycle.id} 
-              basePrice={motorcycle.base_price} 
+            <BidSection
+              motorcycleId={motorcycle.id}
+              basePrice={motorcycle.base_price}
               initialEndTime={endTime || undefined}
+              sellerId={motorcycle.user_id}
             />
             <LiveBids motorcycleId={motorcycle.id} />
           </div>
